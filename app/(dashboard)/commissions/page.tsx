@@ -1,21 +1,57 @@
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, FileText, TrendingUp, Calendar } from 'lucide-react';
-
-const commissions = [
-  { id: '1', student: 'Rahul Sharma', amount: '₹15,000', status: 'paid', date: '2024-01-15', type: 'Training' },
-  { id: '2', student: 'Priya Patel', amount: '₹25,000', status: 'pending', date: '2024-01-20', type: 'Job' },
-  { id: '3', student: 'Amit Kumar', amount: '₹12,000', status: 'processing', date: '2024-01-22', type: 'Training' },
-];
-
-const invoices = [
-  { id: 'INV-001', partner: 'Tech Academy', amount: '₹45,000', status: 'paid', dueDate: '2024-01-15' },
-  { id: 'INV-002', partner: 'TechCorp Solutions', amount: '₹32,000', status: 'pending', dueDate: '2024-01-25' },
-];
+import { dataService } from '@/lib/services';
+import LoadingSkeleton from '@/components/shared/loading-skeleton';
 
 export default function CommissionsPage() {
+  const { data: commissionLedgers = [], isLoading: loadingLedgers } = useQuery({
+    queryKey: ['commissionLedgers'],
+    queryFn: () => dataService.getCommissionLedgers()
+  });
+
+  const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
+    queryKey: ['invoices'],
+    queryFn: () => dataService.getInvoices()
+  });
+
+  const { data: referrals = [] } = useQuery({
+    queryKey: ['referrals'],
+    queryFn: () => dataService.getReferrals()
+  });
+
+  const { data: students = [] } = useQuery({
+    queryKey: ['students'],
+    queryFn: () => dataService.getStudents()
+  });
+
+  const { data: partners = [] } = useQuery({
+    queryKey: ['partners'],
+    queryFn: () => dataService.getPartners()
+  });
+
+  const getStudentName = (referralId: string) => {
+    const referral = referrals.find(r => r.id === referralId);
+    const student = students.find(s => s.id === referral?.student_id);
+    return student?.name || 'Unknown Student';
+  };
+
+  const getPartnerName = (partnerId: string) => {
+    const partner = partners.find(p => p.id === partnerId);
+    return partner?.name || 'Unknown Partner';
+  };
+
+  const totalEarned = commissionLedgers
+    .filter(l => l.status === 'paid')
+    .reduce((sum, l) => sum + l.expected_amount, 0);
+
+  const pendingAmount = commissionLedgers
+    .filter(l => l.status === 'pending')
+    .reduce((sum, l) => sum + l.expected_amount, 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -36,7 +72,7 @@ export default function CommissionsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹2,45,000</div>
+            <div className="text-2xl font-bold">₹{totalEarned.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">+18% from last month</p>
           </CardContent>
         </Card>
@@ -47,8 +83,8 @@ export default function CommissionsPage() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹52,000</div>
-            <p className="text-xs text-muted-foreground">5 referrals pending</p>
+            <div className="text-2xl font-bold">₹{pendingAmount.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">{commissionLedgers.filter(l => l.status === 'pending').length} referrals pending</p>
           </CardContent>
         </Card>
 
@@ -89,26 +125,36 @@ export default function CommissionsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {commissions.map((commission) => (
-                  <div key={commission.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="font-medium">{commission.student}</div>
-                      <div className="text-sm text-muted-foreground">{commission.type} Referral</div>
-                      <div className="text-xs text-muted-foreground">{commission.date}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant={
-                        commission.status === 'paid' ? 'default' :
-                        commission.status === 'pending' ? 'secondary' : 'outline'
-                      }>
-                        {commission.status}
-                      </Badge>
-                      <div className="text-right">
-                        <div className="font-medium">{commission.amount}</div>
+                {loadingLedgers ? (
+                  Array(3).fill(0).map((_, i) => (
+                    <LoadingSkeleton key={i} variant="card" />
+                  ))
+                ) : commissionLedgers.length > 0 ? (
+                  commissionLedgers.map((ledger) => (
+                    <div key={ledger.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="space-y-1">
+                        <div className="font-medium">{getStudentName(ledger.referral_id)}</div>
+                        <div className="text-sm text-muted-foreground">Commission</div>
+                        <div className="text-xs text-muted-foreground">{new Date(ledger.trigger_date).toLocaleDateString()}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant={
+                          ledger.status === 'paid' ? 'default' :
+                          ledger.status === 'pending' ? 'secondary' : 'outline'
+                        }>
+                          {ledger.status}
+                        </Badge>
+                        <div className="text-right">
+                          <div className="font-medium">₹{ledger.expected_amount.toLocaleString()}</div>
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No commission records found
                   </div>
-                ))}
+                )}
               </div>
             </CardContent>
           </Card>
@@ -122,25 +168,36 @@ export default function CommissionsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {invoices.map((invoice) => (
-                  <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="font-medium">{invoice.id}</div>
-                      <div className="text-sm text-muted-foreground">{invoice.partner}</div>
-                      <div className="text-xs text-muted-foreground">Due: {invoice.dueDate}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant={
-                        invoice.status === 'paid' ? 'default' : 'secondary'
-                      }>
-                        {invoice.status}
-                      </Badge>
-                      <div className="text-right">
-                        <div className="font-medium">{invoice.amount}</div>
+                {loadingInvoices ? (
+                  Array(3).fill(0).map((_, i) => (
+                    <LoadingSkeleton key={i} variant="card" />
+                  ))
+                ) : invoices.length > 0 ? (
+                  invoices.map((invoice) => (
+                    <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="space-y-1">
+                        <div className="font-medium">{invoice.invoice_no}</div>
+                        <div className="text-sm text-muted-foreground">{getPartnerName(invoice.partner_id)}</div>
+                        <div className="text-xs text-muted-foreground">{new Date(invoice.date).toLocaleDateString()}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant={
+                          invoice.status === 'paid' ? 'default' : 
+                          invoice.status === 'overdue' ? 'destructive' : 'secondary'
+                        }>
+                          {invoice.status}
+                        </Badge>
+                        <div className="text-right">
+                          <div className="font-medium">₹{invoice.total.toLocaleString()}</div>
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No invoices found
                   </div>
-                ))}
+                )}
               </div>
             </CardContent>
           </Card>

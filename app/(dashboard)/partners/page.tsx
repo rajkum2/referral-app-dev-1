@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,24 +9,45 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Search, Filter, Building, GraduationCap } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import LoadingSkeleton from '@/components/shared/loading-skeleton';
-
-const mockInstitutes = [
-  { id: '1', name: 'Tech Academy', type: 'Institute', courses: 12, students: 245, status: 'active' },
-  { id: '2', name: 'Digital Skills Institute', type: 'Institute', courses: 8, students: 156, status: 'active' },
-];
-
-const mockCompanies = [
-  { id: '3', name: 'TechCorp Solutions', type: 'Company', openings: 5, hired: 23, status: 'active' },
-  { id: '4', name: 'Digital Innovations Ltd', type: 'Company', openings: 8, hired: 15, status: 'active' },
-];
+import { dataService } from '@/lib/services';
 
 export default function PartnersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('institutes');
-  const [isLoading, setIsLoading] = useState(false);
   const { selectedPartnerId, setSelectedPartnerId } = useAppStore();
 
-  const partners = activeTab === 'institutes' ? mockInstitutes : mockCompanies;
+  const { data: partners = [], isLoading, error } = useQuery({
+    queryKey: ['partners', activeTab],
+    queryFn: () => dataService.getPartners({ 
+      type: activeTab === 'institutes' ? 'institute' : 'employer' 
+    })
+  });
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: () => dataService.getPrograms(),
+    enabled: activeTab === 'institutes'
+  });
+
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => dataService.getJobs(),
+    enabled: activeTab === 'companies'
+  });
+
+  const filteredPartners = partners.filter(partner => 
+    searchTerm === '' || 
+    partner.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    partner.hq_city.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-destructive">Error loading partners: {error.message}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -77,7 +99,7 @@ export default function PartnersPage() {
                   <LoadingSkeleton key={i} variant="card" />
                 ))
               ) : (
-                partners.map((partner) => (
+                filteredPartners.map((partner) => (
                   <Card 
                     key={partner.id}
                     className={`cursor-pointer transition-all hover:shadow-md ${
@@ -87,19 +109,19 @@ export default function PartnersPage() {
                   >
                     <CardHeader className="pb-2">
                       <CardTitle className="text-lg">{partner.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{partner.type}</p>
+                      <p className="text-sm text-muted-foreground">{partner.hq_city}</p>
                     </CardHeader>
                     <CardContent className="pt-0">
                       <div className="text-sm text-muted-foreground">
                         {activeTab === 'institutes' ? (
                           <div className="flex justify-between">
-                            <span>{partner.courses} courses</span>
-                            <span>{partner.students} students</span>
+                            <span>{programs.filter(p => p.partner_id === partner.id).length} programs</span>
+                            <span>Score: {partner.reliability_score}</span>
                           </div>
                         ) : (
                           <div className="flex justify-between">
-                            <span>{partner.openings} openings</span>
-                            <span>{partner.hired} hired</span>
+                            <span>{jobs.filter(j => j.partner_id === partner.id).length} jobs</span>
+                            <span>Score: {partner.reliability_score}</span>
                           </div>
                         )}
                       </div>
@@ -121,11 +143,33 @@ export default function PartnersPage() {
                   View Full Profile
                 </Button>
               </div>
-              <div className="bg-muted/30 p-6 rounded-lg">
-                <p className="text-center text-muted-foreground">
-                  Partner detail view will be implemented in Phase B
-                </p>
-              </div>
+              {(() => {
+                const selectedPartner = filteredPartners.find(p => p.id === selectedPartnerId);
+                return selectedPartner ? (
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{selectedPartner.name}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div><strong>Type:</strong> {selectedPartner.type}</div>
+                        <div><strong>Location:</strong> {selectedPartner.hq_city}</div>
+                        <div><strong>Website:</strong> {selectedPartner.website}</div>
+                        <div><strong>GSTIN:</strong> {selectedPartner.gstin}</div>
+                        <div><strong>Reliability Score:</strong> {selectedPartner.reliability_score}/100</div>
+                        <div><strong>Payout Terms:</strong> {selectedPartner.payout_terms}</div>
+                        <div><strong>Contacts:</strong> {selectedPartner.contacts.length}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <div className="bg-muted/30 p-6 rounded-lg">
+                    <p className="text-center text-muted-foreground">
+                      Loading partner details...
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">

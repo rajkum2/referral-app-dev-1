@@ -1,21 +1,67 @@
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRightLeft, GraduationCap, Briefcase, Plus } from 'lucide-react';
 import StageBadge from '@/components/shared/stage-badge';
-
-const trainingReferrals = [
-  { id: '1', student: 'Rahul Sharma', program: 'Data Science Bootcamp', institute: 'Tech Academy', stage: 'qualified', value: '₹15,000' },
-  { id: '2', student: 'Priya Patel', program: 'Web Development', institute: 'Digital Skills', stage: 'proposal', value: '₹12,000' },
-];
-
-const jobReferrals = [
-  { id: '3', student: 'Amit Kumar', position: 'Frontend Developer', company: 'TechCorp', stage: 'contacted', value: '₹25,000' },
-  { id: '4', student: 'Sarah Wilson', position: 'Data Analyst', company: 'Analytics Pro', stage: 'closed', value: '₹30,000' },
-];
+import { dataService } from '@/lib/services';
+import LoadingSkeleton from '@/components/shared/loading-skeleton';
 
 export default function ReferralsPage() {
+  const { data: trainingReferrals = [], isLoading: loadingTraining } = useQuery({
+    queryKey: ['referrals', 'training'],
+    queryFn: () => dataService.getReferrals({ pipeline: 'training' })
+  });
+
+  const { data: jobReferrals = [], isLoading: loadingJobs } = useQuery({
+    queryKey: ['referrals', 'job'],
+    queryFn: () => dataService.getReferrals({ pipeline: 'job' })
+  });
+
+  const { data: students = [] } = useQuery({
+    queryKey: ['students'],
+    queryFn: () => dataService.getStudents()
+  });
+
+  const { data: partners = [] } = useQuery({
+    queryKey: ['partners'],
+    queryFn: () => dataService.getPartners()
+  });
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: () => dataService.getPrograms()
+  });
+
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => dataService.getJobs()
+  });
+
+  const getStudentName = (studentId: string) => {
+    const student = students.find(s => s.id === studentId);
+    return student?.name || 'Unknown Student';
+  };
+
+  const getTargetDetails = (referral: any) => {
+    if (referral.target_type === 'program') {
+      const program = programs.find(p => p.id === referral.target_id);
+      const partner = partners.find(p => p.id === program?.partner_id);
+      return {
+        title: program?.title || 'Unknown Program',
+        partner: partner?.name || 'Unknown Institute'
+      };
+    } else {
+      const job = jobs.find(j => j.id === referral.target_id);
+      const partner = partners.find(p => p.id === job?.partner_id);
+      return {
+        title: job?.title || 'Unknown Job',
+        partner: partner?.name || 'Unknown Company'
+      };
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -36,7 +82,7 @@ export default function ReferralsPage() {
             <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">32</div>
+            <div className="text-2xl font-bold">{trainingReferrals.length + jobReferrals.length}</div>
             <p className="text-xs text-muted-foreground">+12% from last month</p>
           </CardContent>
         </Card>
@@ -84,22 +130,35 @@ export default function ReferralsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {trainingReferrals.map((referral) => (
-                  <div key={referral.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="font-medium">{referral.student}</div>
-                      <div className="text-sm text-muted-foreground">{referral.program}</div>
-                      <div className="text-xs text-muted-foreground">{referral.institute}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={referral.stage} />
-                      <div className="text-right">
-                        <div className="font-medium">{referral.value}</div>
-                        <div className="text-xs text-muted-foreground">Commission</div>
+                {loadingTraining ? (
+                  Array(3).fill(0).map((_, i) => (
+                    <LoadingSkeleton key={i} variant="card" />
+                  ))
+                ) : trainingReferrals.length > 0 ? (
+                  trainingReferrals.map((referral) => {
+                    const targetDetails = getTargetDetails(referral);
+                    return (
+                      <div key={referral.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="space-y-1">
+                          <div className="font-medium">{getStudentName(referral.student_id)}</div>
+                          <div className="text-sm text-muted-foreground">{targetDetails.title}</div>
+                          <div className="text-xs text-muted-foreground">{targetDetails.partner}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <StageBadge stage={referral.stage} />
+                          <div className="text-right">
+                            <div className="font-medium">₹{referral.negotiated_terms_snapshot?.fee || 'TBD'}</div>
+                            <div className="text-xs text-muted-foreground">Program Fee</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No training referrals found
                   </div>
-                ))}
+                )}
               </div>
             </CardContent>
           </Card>
@@ -113,22 +172,35 @@ export default function ReferralsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {jobReferrals.map((referral) => (
-                  <div key={referral.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="font-medium">{referral.student}</div>
-                      <div className="text-sm text-muted-foreground">{referral.position}</div>
-                      <div className="text-xs text-muted-foreground">{referral.company}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StageBadge stage={referral.stage} />
-                      <div className="text-right">
-                        <div className="font-medium">{referral.value}</div>
-                        <div className="text-xs text-muted-foreground">Commission</div>
+                {loadingJobs ? (
+                  Array(3).fill(0).map((_, i) => (
+                    <LoadingSkeleton key={i} variant="card" />
+                  ))
+                ) : jobReferrals.length > 0 ? (
+                  jobReferrals.map((referral) => {
+                    const targetDetails = getTargetDetails(referral);
+                    return (
+                      <div key={referral.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="space-y-1">
+                          <div className="font-medium">{getStudentName(referral.student_id)}</div>
+                          <div className="text-sm text-muted-foreground">{targetDetails.title}</div>
+                          <div className="text-xs text-muted-foreground">{targetDetails.partner}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <StageBadge stage={referral.stage} />
+                          <div className="text-right">
+                            <div className="font-medium">₹{referral.negotiated_terms_snapshot?.ctc || 'TBD'}</div>
+                            <div className="text-xs text-muted-foreground">Expected CTC</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No job referrals found
                   </div>
-                ))}
+                )}
               </div>
             </CardContent>
           </Card>

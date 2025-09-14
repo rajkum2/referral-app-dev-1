@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,46 +10,21 @@ import { Plus, Search, Filter, Phone, Mail } from 'lucide-react';
 import FilterPills from '@/components/shared/filter-pills';
 import LoadingSkeleton from '@/components/shared/loading-skeleton';
 import { useAppStore } from '@/lib/store';
+import { dataService } from '@/lib/services';
 import Link from 'next/link';
-
-const mockStudents = [
-  {
-    id: '1',
-    name: 'Rahul Sharma',
-    email: 'rahul.sharma@email.com',
-    phone: '+91 98765 43210',
-    status: 'qualified',
-    course: 'Data Science',
-    location: 'Mumbai',
-    lastContact: '2 days ago'
-  },
-  {
-    id: '2',
-    name: 'Priya Patel',
-    email: 'priya.patel@email.com',
-    phone: '+91 87654 32109',
-    status: 'new',
-    course: 'Web Development',
-    location: 'Bangalore',
-    lastContact: '1 week ago'
-  },
-  {
-    id: '3',
-    name: 'Amit Kumar',
-    email: 'amit.kumar@email.com',
-    phone: '+91 76543 21098',
-    status: 'contacted',
-    course: 'Digital Marketing',
-    location: 'Delhi',
-    lastContact: '3 days ago'
-  }
-];
 
 export default function StudentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<Array<{id: string, label: string, value: string}>>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const { selectedStudentId, setSelectedStudentId } = useAppStore();
+
+  const { data: students = [], isLoading, error } = useQuery({
+    queryKey: ['students', filters],
+    queryFn: () => {
+      const stageFilter = filters.find(f => f.label === 'Stage');
+      return dataService.getStudents(stageFilter ? { stage: stageFilter.value } : {});
+    }
+  });
 
   const removeFilter = (id: string) => {
     setFilters(filters.filter(f => f.id !== id));
@@ -57,6 +33,21 @@ export default function StudentsPage() {
   const clearAllFilters = () => {
     setFilters([]);
   };
+
+  const filteredStudents = students.filter(student => 
+    searchTerm === '' || 
+    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-destructive">Error loading students: {error.message}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -101,7 +92,7 @@ export default function StudentsPage() {
               <LoadingSkeleton key={i} variant="card" />
             ))
           ) : (
-            mockStudents.map((student) => (
+            filteredStudents.map((student) => (
               <Card 
                 key={student.id} 
                 className={`cursor-pointer transition-all hover:shadow-md ${
@@ -113,29 +104,33 @@ export default function StudentsPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="text-lg">{student.name}</CardTitle>
-                      <p className="text-sm text-muted-foreground">{student.course}</p>
+                      <p className="text-sm text-muted-foreground">{student.skills.slice(0, 2).join(', ')}</p>
                     </div>
                     <Badge variant={
-                      student.status === 'qualified' ? 'default' :
-                      student.status === 'new' ? 'secondary' : 'outline'
+                      student.stage === 'qualified' ? 'default' :
+                      student.stage === 'new' ? 'secondary' : 'outline'
                     }>
-                      {student.status}
+                      {student.stage}
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3 w-3" />
-                      {student.email}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3 w-3" />
-                      {student.phone}
-                    </div>
+                    {student.email_verified && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3 w-3" />
+                        {typeof student.email_verified === 'string' ? student.email_verified : 'Email verified'}
+                      </div>
+                    )}
+                    {student.phone_verified && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-3 w-3" />
+                        {typeof student.phone_verified === 'string' ? student.phone_verified : 'Phone verified'}
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mt-3">
-                      <span>{student.location}</span>
-                      <span className="text-xs">Last contact: {student.lastContact}</span>
+                      <span>{student.city}</span>
+                      <span className="text-xs">Score: {student.readiness_score}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -156,11 +151,32 @@ export default function StudentsPage() {
                   </Link>
                 </Button>
               </div>
-              <div className="bg-muted/30 p-6 rounded-lg">
-                <p className="text-center text-muted-foreground">
-                  Student detail view will be implemented in Phase B
-                </p>
-              </div>
+              {(() => {
+                const selectedStudent = filteredStudents.find(s => s.id === selectedStudentId);
+                return selectedStudent ? (
+                  <div className="space-y-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{selectedStudent.name}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div><strong>City:</strong> {selectedStudent.city}</div>
+                        <div><strong>Education:</strong> {selectedStudent.education}</div>
+                        <div><strong>Experience:</strong> {selectedStudent.exp_years} years</div>
+                        <div><strong>Skills:</strong> {selectedStudent.skills.join(', ')}</div>
+                        <div><strong>Readiness Score:</strong> {selectedStudent.readiness_score}/100</div>
+                        <div><strong>Stage:</strong> {selectedStudent.stage}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <div className="bg-muted/30 p-6 rounded-lg">
+                    <p className="text-center text-muted-foreground">
+                      Loading student details...
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
